@@ -139,29 +139,57 @@
 
         // Initialize PeerJS
         function initializePeer() {
-            const userId = 'user-' + Math.random().toString(36).substring(7);
-            
-            peer = new Peer(userId, {
-                host: 'peerjs.herokuapp.com',
+            peer = new Peer(undefined, {
+                host: 'peer-server.onrender.com',  // Updated server
                 secure: true,
                 port: 443,
-                debug: 3
+                path: '/',
+                debug: 3,
+                config: {
+                    'iceServers': [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' },
+                        {
+                            urls: 'turn:numb.viagenie.ca',
+                            username: 'webrtc@live.com',
+                            credential: 'muazkh'
+                        }
+                    ]
+                }
             });
 
             peer.on('open', (id) => {
-                console.log('Connected with ID:', id);
+                console.log('My peer ID is:', id);
                 searchButton.disabled = false;
-                statusDiv.textContent = 'Click Find Partner to start';
+                statusDiv.textContent = 'Ready to connect! Click "Find Partner"';
             });
 
             peer.on('connection', (connection) => {
+                console.log('Incoming connection');
                 conn = connection;
                 handleConnection();
             });
 
             peer.on('error', (err) => {
                 console.error('Peer error:', err);
-                statusDiv.textContent = 'Connection error. Please refresh the page.';
+                if (err.type === 'peer-unavailable') {
+                    statusDiv.textContent = 'No partner found. Try again.';
+                } else {
+                    statusDiv.textContent = 'Connection error. Please try again.';
+                }
+                searchButton.disabled = false;
+            });
+
+            peer.on('disconnected', () => {
+                console.log('Disconnected from server');
+                statusDiv.textContent = 'Disconnected. Trying to reconnect...';
+                peer.reconnect();
+            });
+
+            peer.on('close', () => {
+                console.log('Connection closed');
+                peer = null;
+                statusDiv.textContent = 'Connection closed. Please refresh the page.';
             });
         }
 
@@ -170,12 +198,13 @@
             console.log('Search button clicked');
             
             if (!peer) {
-                console.log('Peer not initialized');
+                console.log('Reinitializing peer');
+                initializePeer();
                 return;
             }
 
             if (isMatched) {
-                // Disconnect current session
+                console.log('Disconnecting from current partner');
                 if (conn) conn.close();
                 isMatched = false;
                 remoteVideo.style.display = 'none';
@@ -188,13 +217,14 @@
             statusDiv.textContent = 'Looking for a partner...';
             searchButton.disabled = true;
 
-            // Generate room ID
-            const roomId = 'room-' + Math.random().toString(36).substring(7);
-            
-            // Try to connect
+            // Generate a unique room ID
+            const roomId = 'ghostchat-' + Math.random().toString(36).substring(7);
+            console.log('Trying to connect to room:', roomId);
+
             try {
                 conn = peer.connect(roomId);
                 if (conn) {
+                    console.log('Connection created');
                     handleConnection();
                 }
             } catch (error) {
@@ -206,7 +236,10 @@
 
         // Handle connection
         function handleConnection() {
+            if (!conn) return;
+
             conn.on('open', () => {
+                console.log('Connection opened');
                 isMatched = true;
                 statusDiv.textContent = 'Connected to partner!';
                 searchButton.disabled = false;
@@ -214,18 +247,26 @@
             });
 
             conn.on('data', (data) => {
+                console.log('Received data:', data);
                 if (data.type === 'chat') {
                     appendMessage(`${data.name}: ${data.message}`);
                 }
             });
 
             conn.on('close', () => {
+                console.log('Connection closed');
                 isMatched = false;
                 statusDiv.textContent = 'Partner disconnected. Click to find new partner.';
                 searchButton.disabled = false;
                 searchButton.textContent = 'Find Partner';
                 remoteVideo.style.display = 'none';
                 chatBox.innerHTML = '';
+            });
+
+            conn.on('error', (err) => {
+                console.error('Connection error:', err);
+                statusDiv.textContent = 'Connection error. Please try again.';
+                searchButton.disabled = false;
             });
         }
 
