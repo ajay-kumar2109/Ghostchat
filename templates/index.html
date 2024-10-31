@@ -87,28 +87,26 @@
     <script>
         let userName = '';
         let localStream = null;
-        const socket = io('https://your-app-name.onrender.com', {
+        let isMatched = false;
+
+        // Connect to your Render backend
+        const socket = io('https://ghostchat-bskg.onrender.com', {
             transports: ['websocket'],
             upgrade: false,
             reconnection: true,
             reconnectionAttempts: 5
         });
-        let isMatched = false;
 
-        // Get DOM elements
-        const nameModal = document.getElementById('nameModal');
-        const mainContent = document.getElementById('mainContent');
-        const nameInput = document.getElementById('nameInput');
-        const startButton = document.getElementById('startButton');
-        const localVideo = document.getElementById('localVideo');
-        const remoteVideo = document.getElementById('remoteVideo');
-        const toggleVideoButton = document.getElementById('toggleVideo');
-        const toggleAudioButton = document.getElementById('toggleAudio');
-        const searchButton = document.getElementById('search-button');
-        const chatBox = document.getElementById('chat-box');
-        const messageInput = document.getElementById('message-input');
-        const sendButton = document.getElementById('send-button');
-        const statusDiv = document.getElementById('status');
+        // Log connection status
+        socket.on('connect', () => {
+            console.log('Connected to server');
+            statusDiv.textContent = 'Connected to server';
+        });
+
+        socket.on('connect_error', (error) => {
+            console.error('Connection error:', error);
+            statusDiv.textContent = 'Server connection error. Please refresh.';
+        });
 
         // Initialize camera
         async function initializeCamera() {
@@ -140,17 +138,23 @@
             }
         });
 
-        // Socket.IO event handlers
-        socket.on('connect', () => {
-            console.log('Connected to server');
-            statusDiv.textContent = 'Connected to server';
+        // Search button handler
+        searchButton.addEventListener('click', () => {
+            console.log('Search button clicked');
+            if (isMatched) {
+                isMatched = false;
+                statusDiv.textContent = 'Disconnected. Click to find new partner.';
+                searchButton.textContent = 'Find Partner';
+                remoteVideo.style.display = 'none';
+                chatBox.innerHTML = '';
+                return;
+            }
+            
+            statusDiv.textContent = 'Searching for a partner...';
+            socket.emit('search');
         });
 
-        socket.on('connected', (data) => {
-            console.log('Server acknowledged connection:', data);
-            searchButton.disabled = false;
-        });
-
+        // Socket event handlers
         socket.on('matched', (data) => {
             console.log('Matched with partner:', data);
             isMatched = true;
@@ -179,22 +183,7 @@
             appendMessage(`${data.name}: ${data.message}`);
         });
 
-        // Search button handler
-        searchButton.addEventListener('click', () => {
-            console.log('Search button clicked');
-            if (isMatched) {
-                isMatched = false;
-                statusDiv.textContent = 'Disconnected. Click to find new partner.';
-                searchButton.textContent = 'Find Partner';
-                remoteVideo.style.display = 'none';
-                chatBox.innerHTML = '';
-            }
-            
-            statusDiv.textContent = 'Searching for a partner...';
-            socket.emit('search');
-        });
-
-        // Send message handler
+        // Chat functionality
         function sendMessage() {
             if (!isMatched) return;
             const message = messageInput.value.trim();
@@ -208,15 +197,7 @@
             }
         }
 
-        // Append message to chat box
-        function appendMessage(message) {
-            const messageElement = document.createElement('div');
-            messageElement.textContent = message;
-            chatBox.appendChild(messageElement);
-            chatBox.scrollTop = chatBox.scrollHeight;
-        }
-
-        // Button event listeners
+        // Keep your existing button handlers
         sendButton.addEventListener('click', sendMessage);
         messageInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') sendMessage();
@@ -237,6 +218,13 @@
                 toggleAudioButton.textContent = audioTrack.enabled ? 'Toggle Audio' : 'Unmute';
             }
         });
+
+        function appendMessage(message) {
+            const messageElement = document.createElement('div');
+            messageElement.textContent = message;
+            chatBox.appendChild(messageElement);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
     </script>
 </body>
 </html>
