@@ -1,0 +1,176 @@
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background-color: #1a1a1a;
+    color: #fff;
+}
+
+/* Name Modal Styles */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.9);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal {
+    background-color: #2a2a2a;
+    padding: 40px;
+    border-radius: 15px;
+    text-align: center;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+    max-width: 400px;
+    width: 90%;
+}
+
+.modal h1 {
+    margin-bottom: 30px;
+    color: #fff;
+    font-size: 2.5em;
+    text-transform: uppercase;
+}
+
+.ghost-icon {
+    font-size: 50px;
+    margin-bottom: 20px;
+}
+
+.modal input {
+    padding: 12px;
+    width: 80%;
+    margin-bottom: 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    background-color: #333;
+    color: #fff;
+}
+
+.modal input::placeholder {
+    color: #888;
+}
+
+.modal button {
+    padding: 12px 30px;
+    background-color: #4a90e2;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s;
+}
+
+.modal button:hover {
+    background-color: #357abd;
+}
+
+/* Main Content Styles */
+.main-container {
+    max-width: 1200px;
+    margin: 20px auto;
+    padding: 20px;
+    display: none;
+}
+
+.container {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    align-items: flex-start;
+}
+
+.video-section, .chat-section {
+    flex: 1;
+    background: #2a2a2a;
+    padding: 20px;
+    border-radius: 15px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+}
+
+#localVideo, #remoteVideo {
+    width: 100%;
+    max-width: 400px;
+    height: 300px;
+    background: #000;
+    margin: 10px 0;
+    border-radius: 12px;
+}
+
+#remoteVideo {
+    display: none;
+}
+
+#chat-box {
+    height: 300px;
+    border: 1px solid #333;
+    border-radius: 12px;
+    overflow-y: auto;
+    padding: 15px;
+    margin: 10px 0;
+    background: #333;
+}
+
+.controls {
+    display: flex;
+    gap: 10px;
+    margin: 15px 0;
+}
+
+button {
+    padding: 10px 20px;
+    background-color: #4a90e2;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+button:hover:not(:disabled) {
+    background-color: #357abd;
+}
+
+button:disabled {
+    background-color: #555;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+#message-input {
+    flex: 1;
+    padding: 10px;
+    border: none;
+    border-radius: 8px;
+    background: #333;
+    color: #fff;
+}
+
+.status {
+    padding: 10px;
+    margin: 10px 0;
+    background-color: #333;
+    border-radius: 8px;
+    text-align: center;
+    color: #fff;
+}
+
+h2 {
+    color: #fff;
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.active-button {
+    background-color: #4CAF50;
+}
+
+.active-button:hover {
+    background-color: #45a049;
+}
