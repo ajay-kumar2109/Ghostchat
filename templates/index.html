@@ -87,7 +87,12 @@
     <script>
         let userName = '';
         let localStream = null;
-        const socket = io();
+        const socket = io('https://your-app-name.onrender.com', {
+            transports: ['websocket'],
+            upgrade: false,
+            reconnection: true,
+            reconnectionAttempts: 5
+        });
         let isMatched = false;
 
         // Get DOM elements
@@ -141,8 +146,13 @@
             statusDiv.textContent = 'Connected to server';
         });
 
-        socket.on('matched', () => {
-            console.log('Matched with partner');
+        socket.on('connected', (data) => {
+            console.log('Server acknowledged connection:', data);
+            searchButton.disabled = false;
+        });
+
+        socket.on('matched', (data) => {
+            console.log('Matched with partner:', data);
             isMatched = true;
             statusDiv.textContent = 'Connected to a partner!';
             remoteVideo.style.display = 'block';
@@ -150,10 +160,9 @@
             searchButton.disabled = false;
         });
 
-        socket.on('waiting', () => {
-            console.log('Waiting for partner');
+        socket.on('waiting', (data) => {
+            console.log('Waiting for partner:', data);
             statusDiv.textContent = 'Waiting for a partner...';
-            searchButton.disabled = true;
         });
 
         socket.on('partner_left', () => {
@@ -172,16 +181,15 @@
 
         // Search button handler
         searchButton.addEventListener('click', () => {
+            console.log('Search button clicked');
             if (isMatched) {
-                socket.emit('disconnect');
                 isMatched = false;
                 statusDiv.textContent = 'Disconnected. Click to find new partner.';
                 searchButton.textContent = 'Find Partner';
                 remoteVideo.style.display = 'none';
                 chatBox.innerHTML = '';
-                return;
             }
-
+            
             statusDiv.textContent = 'Searching for a partner...';
             socket.emit('search');
         });
