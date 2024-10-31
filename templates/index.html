@@ -3,6 +3,8 @@
 <html>
 <head>
     <title>Ghost Chat</title>
+    <!-- Add PeerJS library -->
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
         body {
             margin: 0;
@@ -213,64 +215,67 @@
     <script>
         let userName = '';
         let localStream = null;
-        let peerConnection = null;
+        let peer = null;
+        let conn = null;
         let isMatched = false;
-        let dataChannel = null;
 
-        // STUN servers for WebRTC
-        const configuration = {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
-            ]
-        };
-
-        // Generate a random room ID
-        const roomId = Math.random().toString(36).substring(7);
-
-        // DOM Elements
-        const nameModal = document.getElementById('nameModal');
-        const mainContent = document.getElementById('mainContent');
-        const nameInput = document.getElementById('nameInput');
-        const startButton = document.getElementById('startButton');
-        const localVideo = document.getElementById('localVideo');
-        const remoteVideo = document.getElementById('remoteVideo');
-        const toggleVideoButton = document.getElementById('toggleVideo');
-        const toggleAudioButton = document.getElementById('toggleAudio');
-        const searchButton = document.getElementById('search-button');
-        const chatBox = document.getElementById('chat-box');
-        const messageInput = document.getElementById('message-input');
-        const sendButton = document.getElementById('send-button');
-        const statusDiv = document.getElementById('status');
-
-        // Initialize WebRTC
-        async function initializeWebRTC() {
-            peerConnection = new RTCPeerConnection(configuration);
-            
-            // Set up data channel for chat
-            dataChannel = peerConnection.createDataChannel('chat');
-            setupDataChannel(dataChannel);
-
-            // Add local stream tracks to peer connection
-            localStream.getTracks().forEach(track => {
-                peerConnection.addTrack(track, localStream);
+        // Initialize PeerJS
+        function initializePeer() {
+            peer = new Peer(undefined, {
+                config: {
+                    'iceServers': [
+                        { url: 'stun:stun.l.google.com:19302' },
+                        { url: 'stun:stun1.l.google.com:19302' }
+                    ]
+                }
             });
 
-            // Handle incoming streams
-            peerConnection.ontrack = (event) => {
-                remoteVideo.srcObject = event.streams[0];
-            };
+            peer.on('open', (id) => {
+                console.log('My peer ID is: ' + id);
+                statusDiv.textContent = 'Connected to network. Click "Find Partner" to start.';
+                searchButton.disabled = false;
+            });
 
-            // Handle ICE candidates
-            peerConnection.onicecandidate = (event) => {
-                if (event.candidate) {
-                    // Send the candidate to the remote peer
-                    broadcastData({
-                        type: 'candidate',
-                        candidate: event.candidate
-                    });
+            peer.on('connection', (connection) => {
+                conn = connection;
+                setupConnection();
+            });
+
+            peer.on('call', (call) => {
+                call.answer(localStream);
+                call.on('stream', (remoteStream) => {
+                    remoteVideo.srcObject = remoteStream;
+                    remoteVideo.style.display = 'block';
+                });
+            });
+
+            peer.on('error', (err) => {
+                console.error('Peer error:', err);
+                statusDiv.textContent = 'Connection error. Please refresh and try again.';
+            });
+        }
+
+        // Setup data connection
+        function setupConnection() {
+            conn.on('data', (data) => {
+                if (data.type === 'chat') {
+                    appendMessage(`${data.name}: ${data.message}`);
                 }
-            };
+            });
+
+            conn.on('open', () => {
+                isMatched = true;
+                statusDiv.textContent = 'Connected to a partner!';
+                searchButton.textContent = 'Find New Partner';
+            });
+
+            conn.on('close', () => {
+                isMatched = false;
+                statusDiv.textContent = 'Partner left. Click "Find Partner" to find a new partner.';
+                searchButton.textContent = 'Find Partner';
+                remoteVideo.style.display = 'none';
+                chatBox.innerHTML = '';
+            });
         }
 
         // Initialize camera
@@ -281,10 +286,7 @@
                     audio: true
                 });
                 localVideo.srcObject = localStream;
-                toggleVideoButton.disabled = false;
-                toggleAudioButton.disabled = false;
-                searchButton.disabled = false;
-                statusDiv.textContent = 'Camera ready! Click "Find Partner" to start chatting';
+                initializePeer();
             } catch (error) {
                 console.error('Camera error:', error);
                 statusDiv.textContent = 'Camera access denied. Please check your permissions.';
@@ -303,122 +305,55 @@
             }
         });
 
-        nameInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                startButton.click();
-            }
-        });
-
-        // Setup WebRTC data channel
-        function setupDataChannel(channel) {
-            channel.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if (data.type === 'chat') {
-                    appendMessage(`${data.name}: ${data.message}`);
-                }
-            };
-
-            channel.onopen = () => {
-                console.log('Data channel opened');
-                statusDiv.textContent = 'Connected to partner!';
-                isMatched = true;
-            };
-
-            channel.onclose = () => {
-                console.log('Data channel closed');
-                statusDiv.textContent = 'Partner disconnected. Click Find Partner to start new chat.';
-                isMatched = false;
-            };
-        }
-
         // Search for partner
-        searchButton.addEventListener('click', async () => {
-            statusDiv.textContent = 'Creating connection...';
+        searchButton.addEventListener('click', () => {
+            if (isMatched) {
+                if (conn) conn.close();
+                if (peer) peer.destroy();
+                initializePeer();
+                return;
+            }
+
+            statusDiv.textContent = 'Searching for a partner...';
             
-            try {
-                await initializeWebRTC();
-                const offer = await peerConnection.createOffer();
-                await peerConnection.setLocalDescription(offer);
-
-                // Broadcast the offer
-                broadcastData({
-                    type: 'offer',
-                    offer: offer
+            // Generate a random room code
+            const roomCode = Math.floor(Math.random() * 1000000).toString();
+            
+            // Try to connect to a peer with this room code
+            conn = peer.connect(roomCode);
+            
+            if (conn) {
+                setupConnection();
+                
+                // Set up video call
+                const call = peer.call(roomCode, localStream);
+                call.on('stream', (remoteStream) => {
+                    remoteVideo.srcObject = remoteStream;
+                    remoteVideo.style.display = 'block';
                 });
-
-                statusDiv.textContent = 'Waiting for partner...';
-            } catch (error) {
-                console.error('Error creating offer:', error);
-                statusDiv.textContent = 'Connection failed. Please try again.';
             }
         });
 
         // Send chat message
         function sendMessage() {
-            if (!isMatched || !dataChannel) return;
-            
+            if (!isMatched || !conn) return;
             const message = messageInput.value.trim();
             if (message) {
                 appendMessage(`You: ${message}`);
-                dataChannel.send(JSON.stringify({
+                conn.send({
                     type: 'chat',
                     name: userName,
                     message: message
-                }));
+                });
                 messageInput.value = '';
             }
         }
 
-        // Handle received data
-        async function handleReceivedData(data) {
-            if (data.type === 'offer') {
-                try {
-                    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-                    const answer = await peerConnection.createAnswer();
-                    await peerConnection.setLocalDescription(answer);
-                    
-                    broadcastData({
-                        type: 'answer',
-                        answer: answer
-                    });
-                } catch (error) {
-                    console.error('Error handling offer:', error);
-                }
-            } else if (data.type === 'answer') {
-                try {
-                    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-                } catch (error) {
-                    console.error('Error handling answer:', error);
-                }
-            } else if (data.type === 'candidate') {
-                try {
-                    await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-                } catch (error) {
-                    console.error('Error handling ICE candidate:', error);
-                }
-            }
-        }
-
-        // Broadcast data (using a simple signaling server or local storage)
-        function broadcastData(data) {
-            // For now, we'll use localStorage as a simple signaling mechanism
-            localStorage.setItem('webrtc-signal', JSON.stringify({
-                ...data,
-                timestamp: Date.now()
-            }));
-        }
-
-        // Listen for signals
-        window.addEventListener('storage', (event) => {
-            if (event.key === 'webrtc-signal') {
-                const data = JSON.parse(event.newValue);
-                if (data && Date.now() - data.timestamp < 1000) {
-                    handleReceivedData(data);
-                }
-            }
+        // Keep your existing event listeners and helper functions
+        nameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') startButton.click();
         });
 
-        // Button handlers
         toggleVideoButton.addEventListener('click', () => {
             if (localStream) {
                 const videoTrack = localStream.getVideoTracks()[0];
@@ -439,6 +374,13 @@
         messageInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') sendMessage();
         });
+
+        function appendMessage(message) {
+            const messageElement = document.createElement('div');
+            messageElement.textContent = message;
+            chatBox.appendChild(messageElement);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
     </script>
 </body>
 </html>
