@@ -3,8 +3,49 @@
 <html>
 <head>
     <title>Ghost Chat</title>
-    <link rel="stylesheet" href="/static/css/style.css">
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: #fff;
+        }
+
+        /* Name Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal {
+            background-color: #2a2a2a;
+            padding: 40px;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            max-width: 400px;
+            width: 90%;
+        }
+
+        /* Add all your previous CSS styles here */
+        
+        .active-button {
+            background-color: #4CAF50 !important;
+        }
+
+        .active-button:hover {
+            background-color: #45a049 !important;
+        }
+    </style>
 </head>
 <body>
     <!-- Name Entry Modal -->
@@ -272,6 +313,126 @@
         messageInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') sendMessage();
         });
+
+        // Initialize PeerJS
+        function initializePeer() {
+            // Create a random user ID
+            const userId = 'user-' + Math.random().toString(36).substr(2, 9);
+            
+            peer = new Peer(userId, {
+                debug: 3,
+                config: {
+                    'iceServers': [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' },
+                        {
+                            urls: 'turn:numb.viagenie.ca',
+                            credential: 'muazkh',
+                            username: 'webrtc@live.com'
+                        }
+                    ]
+                }
+            });
+
+            peer.on('open', (id) => {
+                console.log('My peer ID is: ' + id);
+                searchButton.disabled = false;
+                statusDiv.textContent = 'Ready to connect! Click "Find Partner"';
+            });
+
+            peer.on('connection', (connection) => {
+                conn = connection;
+                setupConnection();
+            });
+
+            peer.on('call', (call) => {
+                call.answer(localStream);
+                call.on('stream', (remoteStream) => {
+                    remoteVideo.srcObject = remoteStream;
+                    remoteVideo.style.display = 'block';
+                });
+            });
+
+            peer.on('error', (err) => {
+                console.error('Peer error:', err);
+                statusDiv.textContent = 'Connection error. Please refresh the page.';
+                searchButton.disabled = false;
+            });
+        }
+
+        // Update the search button handler
+        searchButton.addEventListener('click', () => {
+            if (!peer) {
+                console.log('Peer not initialized');
+                return;
+            }
+
+            if (isMatched) {
+                // Disconnect from current partner
+                if (conn) conn.close();
+                isMatched = false;
+                remoteVideo.style.display = 'none';
+                chatBox.innerHTML = '';
+                statusDiv.textContent = 'Disconnected. Click to find new partner.';
+                searchButton.textContent = 'Find Partner';
+                return;
+            }
+
+            statusDiv.textContent = 'Searching for a partner...';
+            
+            // Connect to the server to find a partner
+            fetch('https://peerjs-server.herokuapp.com/peerjs/peers')
+                .then(response => response.json())
+                .then(peers => {
+                    const availablePeers = peers.filter(p => p !== peer.id);
+                    if (availablePeers.length > 0) {
+                        const partnerId = availablePeers[Math.floor(Math.random() * availablePeers.length)];
+                        conn = peer.connect(partnerId);
+                        setupConnection();
+                        
+                        // Set up video call
+                        const call = peer.call(partnerId, localStream);
+                        call.on('stream', (remoteStream) => {
+                            remoteVideo.srcObject = remoteStream;
+                            remoteVideo.style.display = 'block';
+                        });
+                    } else {
+                        statusDiv.textContent = 'No partners available. Please wait...';
+                        setTimeout(() => searchButton.click(), 3000); // Try again in 3 seconds
+                    }
+                })
+                .catch(error => {
+                    console.error('Error finding partner:', error);
+                    statusDiv.textContent = 'Error finding partner. Please try again.';
+                    searchButton.disabled = false;
+                });
+        });
+
+        function setupConnection() {
+            if (!conn) return;
+
+            conn.on('open', () => {
+                isMatched = true;
+                statusDiv.textContent = 'Connected to a partner!';
+                searchButton.textContent = 'Find New Partner';
+                searchButton.disabled = false;
+            });
+
+            conn.on('data', (data) => {
+                if (data.type === 'chat') {
+                    appendMessage(`${data.name}: ${data.message}`);
+                }
+            });
+
+            conn.on('close', () => {
+                isMatched = false;
+                statusDiv.textContent = 'Partner disconnected. Click to find new partner.';
+                searchButton.textContent = 'Find Partner';
+                remoteVideo.style.display = 'none';
+                chatBox.innerHTML = '';
+                searchButton.disabled = false;
+            });
+        }
     </script>
 </body>
 </html>
