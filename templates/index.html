@@ -316,121 +316,80 @@
 
         // Initialize PeerJS
         function initializePeer() {
-            // Create a random user ID
-            const userId = 'user-' + Math.random().toString(36).substr(2, 9);
+            // Create a unique room ID
+            const roomId = 'ghostchat-' + Math.random().toString(36).substr(2, 9);
             
-            peer = new Peer(userId, {
+            peer = new Peer(roomId, {
+                host: 'peerjs-server.herokuapp.com',
+                secure: true,
+                port: 443,
                 debug: 3,
                 config: {
                     'iceServers': [
                         { urls: 'stun:stun.l.google.com:19302' },
-                        { urls: 'stun:stun1.l.google.com:19302' },
-                        {
-                            urls: 'turn:numb.viagenie.ca',
-                            credential: 'muazkh',
-                            username: 'webrtc@live.com'
-                        }
+                        { urls: 'stun:stun1.l.google.com:19302' }
                     ]
                 }
             });
 
             peer.on('open', (id) => {
-                console.log('My peer ID is: ' + id);
+                console.log('Connected with ID:', id);
                 searchButton.disabled = false;
-                statusDiv.textContent = 'Ready to connect! Click "Find Partner"';
+                statusDiv.textContent = 'Click Find Partner to start';
             });
 
-            peer.on('connection', (connection) => {
-                conn = connection;
-                setupConnection();
-            });
-
-            peer.on('call', (call) => {
-                call.answer(localStream);
-                call.on('stream', (remoteStream) => {
-                    remoteVideo.srcObject = remoteStream;
-                    remoteVideo.style.display = 'block';
-                });
-            });
-
-            peer.on('error', (err) => {
-                console.error('Peer error:', err);
-                statusDiv.textContent = 'Connection error. Please refresh the page.';
-                searchButton.disabled = false;
-            });
+            peer.on('connection', handleConnection);
+            peer.on('error', handleError);
         }
 
-        // Update the search button handler
+        // Handle search button click
         searchButton.addEventListener('click', () => {
-            if (!peer) {
-                console.log('Peer not initialized');
-                return;
-            }
-
             if (isMatched) {
-                // Disconnect from current partner
+                // Disconnect current session
                 if (conn) conn.close();
+                peer.destroy();
+                initializePeer();
                 isMatched = false;
-                remoteVideo.style.display = 'none';
-                chatBox.innerHTML = '';
                 statusDiv.textContent = 'Disconnected. Click to find new partner.';
-                searchButton.textContent = 'Find Partner';
                 return;
             }
 
-            statusDiv.textContent = 'Searching for a partner...';
+            statusDiv.textContent = 'Looking for a partner...';
+            searchButton.disabled = true;
+
+            // Try to join a random room
+            const targetRoom = 'ghostchat-room-' + Date.now();
+            conn = peer.connect(targetRoom);
             
-            // Connect to the server to find a partner
-            fetch('https://peerjs-server.herokuapp.com/peerjs/peers')
-                .then(response => response.json())
-                .then(peers => {
-                    const availablePeers = peers.filter(p => p !== peer.id);
-                    if (availablePeers.length > 0) {
-                        const partnerId = availablePeers[Math.floor(Math.random() * availablePeers.length)];
-                        conn = peer.connect(partnerId);
-                        setupConnection();
-                        
-                        // Set up video call
-                        const call = peer.call(partnerId, localStream);
-                        call.on('stream', (remoteStream) => {
-                            remoteVideo.srcObject = remoteStream;
-                            remoteVideo.style.display = 'block';
-                        });
-                    } else {
-                        statusDiv.textContent = 'No partners available. Please wait...';
-                        setTimeout(() => searchButton.click(), 3000); // Try again in 3 seconds
-                    }
-                })
-                .catch(error => {
-                    console.error('Error finding partner:', error);
-                    statusDiv.textContent = 'Error finding partner. Please try again.';
-                    searchButton.disabled = false;
-                });
+            if (conn) {
+                setupConnection(conn);
+            }
         });
 
-        function setupConnection() {
-            if (!conn) return;
+        function handleConnection(connection) {
+            conn = connection;
+            setupConnection(conn);
+        }
 
-            conn.on('open', () => {
+        function handleError(err) {
+            console.error('Connection error:', err);
+            statusDiv.textContent = 'Connection failed. Try again.';
+            searchButton.disabled = false;
+        }
+
+        function setupConnection(connection) {
+            connection.on('open', () => {
                 isMatched = true;
-                statusDiv.textContent = 'Connected to a partner!';
+                statusDiv.textContent = 'Connected to partner!';
+                searchButton.disabled = false;
                 searchButton.textContent = 'Find New Partner';
-                searchButton.disabled = false;
             });
 
-            conn.on('data', (data) => {
-                if (data.type === 'chat') {
-                    appendMessage(`${data.name}: ${data.message}`);
-                }
-            });
-
-            conn.on('close', () => {
+            connection.on('close', () => {
                 isMatched = false;
-                statusDiv.textContent = 'Partner disconnected. Click to find new partner.';
-                searchButton.textContent = 'Find Partner';
-                remoteVideo.style.display = 'none';
-                chatBox.innerHTML = '';
+                statusDiv.textContent = 'Partner left. Click to find new partner.';
                 searchButton.disabled = false;
+                searchButton.textContent = 'Find Partner';
             });
         }
     </script>
