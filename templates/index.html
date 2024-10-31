@@ -3,8 +3,7 @@
 <html>
 <head>
     <title>Ghost Chat</title>
-    <!-- Add WebRTC adapter for better browser compatibility -->
-    <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
         body {
             margin: 0;
@@ -88,26 +87,24 @@
     <script>
         let userName = '';
         let localStream = null;
-        let peerConnection = null;
+        let peer = null;
+        let conn = null;
         let isMatched = false;
 
-        // STUN/TURN servers configuration
-        const configuration = {
-            iceServers: [
-                {
-                    urls: [
-                        'stun:stun1.l.google.com:19302',
-                        'stun:stun2.l.google.com:19302'
-                    ]
-                },
-                {
-                    urls: 'turn:numb.viagenie.ca',
-                    credential: 'muazkh',
-                    username: 'webrtc@live.com'
-                }
-            ],
-            iceCandidatePoolSize: 10
-        };
+        // Get DOM elements
+        const nameModal = document.getElementById('nameModal');
+        const mainContent = document.getElementById('mainContent');
+        const nameInput = document.getElementById('nameInput');
+        const startButton = document.getElementById('startButton');
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideo = document.getElementById('remoteVideo');
+        const toggleVideoButton = document.getElementById('toggleVideo');
+        const toggleAudioButton = document.getElementById('toggleAudio');
+        const searchButton = document.getElementById('search-button');
+        const chatBox = document.getElementById('chat-box');
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const statusDiv = document.getElementById('status');
 
         // Initialize camera
         async function initializeCamera() {
@@ -134,126 +131,133 @@
                 nameModal.style.display = 'none';
                 mainContent.style.display = 'block';
                 await initializeCamera();
+                initializePeer(); // Initialize peer after camera
             } else {
                 alert('Please enter your name');
             }
         });
 
-        // Initialize WebRTC connection
-        async function createPeerConnection() {
-            peerConnection = new RTCPeerConnection(configuration);
+        // Initialize PeerJS
+        function initializePeer() {
+            const userId = 'user-' + Math.random().toString(36).substring(7);
             
-            // Add local stream
-            localStream.getTracks().forEach(track => {
-                peerConnection.addTrack(track, localStream);
+            peer = new Peer(userId, {
+                host: 'peerjs.herokuapp.com',
+                secure: true,
+                port: 443,
+                debug: 3
             });
 
-            // Handle incoming stream
-            peerConnection.ontrack = event => {
-                remoteVideo.srcObject = event.streams[0];
-                remoteVideo.style.display = 'block';
-            };
+            peer.on('open', (id) => {
+                console.log('Connected with ID:', id);
+                searchButton.disabled = false;
+                statusDiv.textContent = 'Click Find Partner to start';
+            });
 
-            // Handle connection state changes
-            peerConnection.oniceconnectionstatechange = () => {
-                console.log('ICE Connection State:', peerConnection.iceConnectionState);
-                if (peerConnection.iceConnectionState === 'disconnected') {
-                    handleDisconnect();
-                }
-            };
+            peer.on('connection', (connection) => {
+                conn = connection;
+                handleConnection();
+            });
 
-            return peerConnection;
+            peer.on('error', (err) => {
+                console.error('Peer error:', err);
+                statusDiv.textContent = 'Connection error. Please refresh the page.';
+            });
         }
 
         // Handle search button click
-        searchButton.addEventListener('click', async () => {
-            if (isMatched) {
-                handleDisconnect();
+        searchButton.addEventListener('click', () => {
+            console.log('Search button clicked');
+            
+            if (!peer) {
+                console.log('Peer not initialized');
                 return;
             }
 
-            statusDiv.textContent = 'Searching for a partner...';
+            if (isMatched) {
+                // Disconnect current session
+                if (conn) conn.close();
+                isMatched = false;
+                remoteVideo.style.display = 'none';
+                chatBox.innerHTML = '';
+                statusDiv.textContent = 'Disconnected. Click to find new partner.';
+                searchButton.textContent = 'Find Partner';
+                return;
+            }
+
+            statusDiv.textContent = 'Looking for a partner...';
             searchButton.disabled = true;
 
+            // Generate room ID
+            const roomId = 'room-' + Math.random().toString(36).substring(7);
+            
+            // Try to connect
             try {
-                await createPeerConnection();
-                const offer = await peerConnection.createOffer();
-                await peerConnection.setLocalDescription(offer);
-                
-                // Here we would normally send the offer to a signaling server
-                // For testing, we'll use local storage
-                localStorage.setItem('offer', JSON.stringify({
-                    type: 'offer',
-                    sdp: offer.sdp,
-                    timestamp: Date.now()
-                }));
-
-                checkForAnswer();
+                conn = peer.connect(roomId);
+                if (conn) {
+                    handleConnection();
+                }
             } catch (error) {
-                console.error('Error creating offer:', error);
-                statusDiv.textContent = 'Connection failed. Please try again.';
+                console.error('Connection error:', error);
+                statusDiv.textContent = 'Connection failed. Try again.';
                 searchButton.disabled = false;
             }
         });
 
-        // Check for answer
-        function checkForAnswer() {
-            const checkInterval = setInterval(() => {
-                const answer = localStorage.getItem('answer');
-                if (answer) {
-                    const answerData = JSON.parse(answer);
-                    if (Date.now() - answerData.timestamp < 10000) {
-                        clearInterval(checkInterval);
-                        handleAnswer(answerData);
-                        localStorage.removeItem('answer');
-                    }
-                }
-            }, 1000);
-
-            // Timeout after 30 seconds
-            setTimeout(() => {
-                clearInterval(checkInterval);
-                if (!isMatched) {
-                    statusDiv.textContent = 'No partner found. Try again.';
-                    searchButton.disabled = false;
-                }
-            }, 30000);
-        }
-
-        // Handle incoming answer
-        async function handleAnswer(answerData) {
-            try {
-                await peerConnection.setRemoteDescription(new RTCSessionDescription({
-                    type: 'answer',
-                    sdp: answerData.sdp
-                }));
+        // Handle connection
+        function handleConnection() {
+            conn.on('open', () => {
                 isMatched = true;
                 statusDiv.textContent = 'Connected to partner!';
-                searchButton.textContent = 'Disconnect';
                 searchButton.disabled = false;
-            } catch (error) {
-                console.error('Error setting remote description:', error);
-                statusDiv.textContent = 'Connection failed. Please try again.';
+                searchButton.textContent = 'Find New Partner';
+            });
+
+            conn.on('data', (data) => {
+                if (data.type === 'chat') {
+                    appendMessage(`${data.name}: ${data.message}`);
+                }
+            });
+
+            conn.on('close', () => {
+                isMatched = false;
+                statusDiv.textContent = 'Partner disconnected. Click to find new partner.';
                 searchButton.disabled = false;
+                searchButton.textContent = 'Find Partner';
+                remoteVideo.style.display = 'none';
+                chatBox.innerHTML = '';
+            });
+        }
+
+        // Send chat message
+        function sendMessage() {
+            if (!isMatched || !conn) return;
+            const message = messageInput.value.trim();
+            if (message) {
+                appendMessage(`You: ${message}`);
+                conn.send({
+                    type: 'chat',
+                    name: userName,
+                    message: message
+                });
+                messageInput.value = '';
             }
         }
 
-        // Handle disconnect
-        function handleDisconnect() {
-            if (peerConnection) {
-                peerConnection.close();
-                peerConnection = null;
-            }
-            isMatched = false;
-            remoteVideo.style.display = 'none';
-            remoteVideo.srcObject = null;
-            statusDiv.textContent = 'Disconnected. Click to find new partner.';
-            searchButton.textContent = 'Find Partner';
-            searchButton.disabled = false;
-            chatBox.innerHTML = '';
+        // Append message to chat box
+        function appendMessage(message) {
+            const messageElement = document.createElement('div');
+            messageElement.textContent = message;
+            chatBox.appendChild(messageElement);
+            chatBox.scrollTop = chatBox.scrollHeight;
         }
 
-        // Button handlers
+        // Button event listeners
+        sendButton.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
         toggleVideoButton.addEventListener('click', () => {
             if (localStream) {
                 const videoTrack = localStream.getVideoTracks()[0];
@@ -268,11 +272,6 @@
                 audioTrack.enabled = !audioTrack.enabled;
                 toggleAudioButton.textContent = audioTrack.enabled ? 'Toggle Audio' : 'Unmute';
             }
-        });
-
-        sendButton.addEventListener('click', sendMessage);
-        messageInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') sendMessage();
         });
     </script>
 </body>
